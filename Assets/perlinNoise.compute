@@ -1,0 +1,14 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+RWTexture2D<float4> resultBuffer;
+float4 colour;
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+	//float4 colour = float4(1.0f,0.0f,0.0f,1.0); Removing since no longer setting color red.
+	resultBuffer[id.xy]=colour;
+}
