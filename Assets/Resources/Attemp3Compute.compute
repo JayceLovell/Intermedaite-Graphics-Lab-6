@@ -1,0 +1,18 @@
+#pragma kernel CSMain
+
+struct FlockAgent {
+    float3 position;
+    float3 velocity;
+    float3 direction;
+};
+
+FlockAgent GetAgent(uint index, float3* PosBuffer, float3* VelBuffer) {
+    FlockAgent agent;
+    agent.position = PosBuffer[index];
+    agent.velocity = VelBuffer[index];
+    agent.direction = normalize(agent.velocity);
+    return agent;
+}
+
+[numthreads(64, 1, 1)]
+void CSMain (uint
