@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using UnityEngine;
 using System.Linq;
 using System;
+using UnityEngine.UIElements;
+
 public class FlockCreator : MonoBehaviour
 {
 
@@ -25,68 +27,94 @@ public class FlockCreator : MonoBehaviour
     private int kernelHandle;
     //https://stackoverflow.com/questions/9600801/evenly-distributing-n-points-on-a-sphere/44164075#44164075
 
+
     // Start is called before the first frame update
     void Start()
     {
         agents = new GameObject[numAgents];
         agent.layer = LayerMask.NameToLayer("Agents");
-        
 
 
-        for(int i = 0; i < numAgents; i ++){
+
+        for (int i = 0; i < numAgents; i ++){
             Vector3 pos = UnityEngine.Random.insideUnitCircle;
             pos += this.gameObject.transform.position;
             pos.x += UnityEngine.Random.value * spawnRadius;
             pos.y += UnityEngine.Random.value * spawnRadius;
             pos.z += UnityEngine.Random.value * spawnRadius;
+
             //GameObject currentAgent = Instantiate(agent, this.transform.position, Quaternion.identity);
             GameObject currentAgent = Instantiate(agent, pos, Quaternion.identity);
             currentAgent.transform.parent = this.transform;
-            agents[i] = currentAgent;
+            agents[i] = currentAgent;           
         }
 
 
-        kernelHandle = computeShader.FindKernel("CSMain");
-
-
-        
+        kernelHandle = computeShader.FindKernel("CSMain");       
     }
     //Think of thses as the uniform variables in OpenGL.
     private void setUniforms(){
-
+        computeShader.SetInt("numAgents", numAgents);
     }
 
     //Send the Flock's positions and velocities to the GPU
     private void setBuffer(){
+        Vector3[] posData = new Vector3[numAgents];
+        Vector3[] velData = new Vector3[numAgents];
+        for (int i = 0; i < numAgents; i++)
+        {
+            posData[i] = agents[i].transform.position;
+            velData[i] = agents[i].transform.forward * speed;
+        }
 
-    } 
-    void runShader(){
+        posBuffer = new ComputeBuffer(numAgents, sizeof(float) * 3);
+        velBuffer = new ComputeBuffer(numAgents, sizeof(float) * 3);
+        resultBuffer = new ComputeBuffer(numAgents, sizeof(float) * 3);
 
-        
+        posBuffer.SetData(posData);
+        velBuffer.SetData(velData);
+
+        computeShader.SetBuffer(kernelHandle, "posBuffer", posBuffer);
+        computeShader.SetBuffer(kernelHandle, "velBuffer", velBuffer);
+        computeShader.SetBuffer(kernelHandle, "resultBuffer", resultBuffer);
+        computeShader.SetBuffer(kernelHandle, "Result", resultBuffer);
+    }
+    void runShader()
+    {
+
+        computeShader.Dispatch(kernelHandle, Mathf.CeilToInt(numAgents / 8.0f), 1, 1);
+
+        // Set the buffer containing the results of the computation
+        computeShader.SetBuffer(kernelHandle, "Result", resultBuffer);
+
+        resultData = new Vector3[numAgents];
+        resultBuffer.GetData(resultData);
+
+        for (int i = 0; i < numAgents; i++)
+        {
+            // Add a small offset to the target position to avoid "look rotation viewing vector is zero" error
+            Vector3 targetPos = resultData[i] + Vector3.one * 0.001f;
+
+            agents[i].transform.position = resultData[i];
+            agents[i].transform.forward = Vector3.Normalize(targetPos - agents[i].transform.position);
+        }
     }
 
 
 
-    void FixedUpdate(){
-        for(int i = 0; i < numAgents; i ++){
-            float closetDist = Mathf.Infinity;
-            Vector3 directionVector = new Vector3(0.0f, 0.0f, 0.0f);
-            GameObject currentAgent = agents[i];
-            Vector3 currentAgentPos = currentAgent.transform.position;
-            for(int j = 0; j < numAgents; j ++){
-                GameObject tempAgent = agents[j];
-                Vector3 tempAgentPos = tempAgent.transform.position;
-                float dist = Vector3.Distance(currentAgentPos, tempAgentPos);
-                if(i != j){
-                    if(dist < closetDist){
-                        closetDist = dist;
-                        directionVector = currentAgentPos - tempAgentPos;
-                        directionVector = Vector3.Normalize(directionVector);
-                        directionVector *= -1.0f;
-                    }
-                }
-            }
-            currentAgent.transform.position += directionVector * speed;
-        }
+
+    void FixedUpdate(){      
+
+        // Dispatch compute shader
+        setUniforms();
+        setBuffer();
+        runShader();
+    }
+
+    private void OnDestroy()
+    {
+        posBuffer.Release();
+        velBuffer.Release();
+        resultBuffer.Release();
     }
 }
